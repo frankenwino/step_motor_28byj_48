@@ -4,63 +4,80 @@
 
 ## Public API
 
-The module exposes a minimal procedural API. There are no classes, protocols, or abstract interfaces.
-
 ```mermaid
 graph TD
-    subgraph "Public API"
-        L[left&#40;step&#41;]
-        R[right&#40;step&#41;]
-        T[test&#40;move_right=512, move_left=512&#41;]
+    subgraph "Public Interface"
+        INIT["__init__(pin1, pin2, pin3, pin4, delay)"]
+        ROT["rotate(degrees)"]
+        LEFT["left(steps)"]
+        RIGHT["right(steps)"]
+        CLOSE["close()"]
+        CTX["Context Manager"]
     end
     subgraph "Internal"
-        S1[Step1-Step8]
+        RUN["_run_steps(steps, forward)"]
+        SEQ["_SEQUENCE table"]
     end
-    L --> S1
-    R --> S1
-    T --> L
-    T --> R
+    ROT --> RUN
+    LEFT --> RUN
+    RIGHT --> RUN
+    RUN --> SEQ
+    CTX --> CLOSE
 ```
 
-## Function Signatures
+## Constructor
 
-### `left(step)`
+### `StepMotor28BYJ48(pin1=6, pin2=13, pin3=19, pin4=26, delay=0.001)`
 
-Rotates the motor counter-clockwise (left).
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `step` | int | Number of full step cycles (512 = 360°) |
-
-**Returns:** None  
-**Side effects:** GPIO pin toggling, prints step count to stdout, blocking sleep
-
-### `right(step)`
-
-Rotates the motor clockwise (right).
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `step` | int | Number of full step cycles (512 = 360°) |
-
-**Returns:** None  
-**Side effects:** GPIO pin toggling, prints step count to stdout, blocking sleep
-
-### `test(move_right=512, move_left=512)`
-
-Demonstration function that performs a full rotation in each direction.
+Creates a motor controller and initializes GPIO.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `move_right` | int | 512 | Steps to rotate right |
-| `move_left` | int | 512 | Steps to rotate left |
+| `pin1` | `int` | 6 | GPIO BCM pin for ULN2003 IN1 |
+| `pin2` | `int` | 13 | GPIO BCM pin for ULN2003 IN2 |
+| `pin3` | `int` | 19 | GPIO BCM pin for ULN2003 IN3 |
+| `pin4` | `int` | 26 | GPIO BCM pin for ULN2003 IN4 |
+| `delay` | `float` | 0.001 | Seconds between steps (controls speed) |
 
-**Returns:** None  
-**Side effects:** Full motor rotation, calls `GPIO.cleanup()` at end
+**Raises:** `ValueError` if `delay <= 0`
+
+**Side effects:** Calls `GPIO.setmode(BCM)`, `GPIO.setup()`, `GPIO.output()` for all pins.
+
+## Methods
+
+### `rotate(degrees: float) -> None`
+
+Rotate motor by angle. Positive = clockwise, negative = counter-clockwise. Zero is a no-op.
+
+**Raises:** `RuntimeError` if motor is closed
+
+### `left(steps: int) -> None`
+
+Rotate counter-clockwise by step cycles (512 = 360 degrees).
+
+**Raises:** `ValueError` if `steps <= 0`, `RuntimeError` if motor is closed
+
+### `right(steps: int) -> None`
+
+Rotate clockwise by step cycles (512 = 360 degrees).
+
+**Raises:** `ValueError` if `steps <= 0`, `RuntimeError` if motor is closed
+
+### `close() -> None`
+
+Release GPIO resources. Safe to call multiple times (idempotent).
+
+**Side effects:** Calls `GPIO.cleanup([pins])`
+
+## Context Manager Protocol
+
+```python
+with StepMotor28BYJ48() as motor:
+    motor.rotate(360)
+# GPIO automatically cleaned up here
+```
 
 ## Hardware Interface
-
-The module communicates with the 28BYJ-48 motor through the ULN2003 driver board via 4 GPIO pins:
 
 ```mermaid
 graph LR
@@ -89,25 +106,28 @@ graph LR
     I4 --> M
 ```
 
-## Usage Example
+## Usage Examples
 
 ```python
-from step_motor_28byj_48 import step_motor_28byj_48
+from step_motor_28byj_48 import StepMotor28BYJ48
 
-# Rotate 90° clockwise
-step_motor_28byj_48.right(128)
+# Basic usage with context manager
+with StepMotor28BYJ48() as motor:
+    motor.rotate(360)     # Full clockwise rotation
+    motor.rotate(-90)     # Quarter counter-clockwise
+    motor.left(128)       # 90 degrees CCW by step cycles
+    motor.right(256)      # 180 degrees CW by step cycles
 
-# Rotate 180° counter-clockwise
-step_motor_28byj_48.left(256)
-
-# Run built-in test (360° each direction)
-step_motor_28byj_48.test()
+# Custom pins and speed
+motor = StepMotor28BYJ48(pin1=17, pin2=27, pin3=22, pin4=23, delay=0.002)
+motor.rotate(180)
+motor.close()
 ```
 
-## Integration Points
+## Error Handling
 
-| Integration | Method | Notes |
-|-------------|--------|-------|
-| RPi.GPIO | Direct function calls | BCM pin numbering, module-level init |
-| CLI | `__main__` guard | Running module directly executes `test()` |
-| Package import | `from step_motor_28byj_48 import step_motor_28byj_48` | Triggers GPIO init on import |
+| Error | Condition | Raised By |
+|-------|-----------|-----------|
+| `ValueError("delay must be positive")` | `delay <= 0` | `__init__` |
+| `ValueError("steps must be positive")` | `steps <= 0` | `left`, `right` |
+| `RuntimeError("Motor is closed")` | Method called after `close()` | `left`, `right`, `rotate` |

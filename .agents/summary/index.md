@@ -14,34 +14,37 @@ This index is the **primary entry point** for AI assistants working with the `st
 
 ## Quick Summary
 
-This is a Python driver for the **28BYJ-48 stepper motor** connected to a **Raspberry Pi** via a **ULN2003 driver board**. It's a single-module, procedural library with 11 functions (8 step functions + left/right/test). The motor is controlled via GPIO pins 6, 13, 19, 26 using a half-step sequence. 512 step cycles = 360° rotation.
+This is a Python driver for the **28BYJ-48 stepper motor** connected to a **Raspberry Pi** via a **ULN2003 driver board**. It provides a single class `StepMotor28BYJ48` with methods to rotate by degrees or step cycles. The motor is controlled via GPIO pins (default: 6, 13, 19, 26) using a half-step sequence. 512 step cycles = 360 degree rotation. Built with modern Python tooling (pyproject.toml, mypy strict, ruff, pytest).
 
 ## Documentation Files
 
 | File | Purpose | Consult When... |
 |------|---------|-----------------|
 | [codebase_info.md](codebase_info.md) | Project identity, tech stack, directory layout, hardware requirements | You need project metadata, version info, directory structure, or pin mappings |
-| [architecture.md](architecture.md) | System design, execution flow, design decisions, constraints | You need to understand how the system is structured or why decisions were made |
-| [components.md](components.md) | Detailed function documentation, half-step sequence table, rotation math | You need specifics about what each function does or the step sequence |
-| [interfaces.md](interfaces.md) | Public API, function signatures, usage examples, integration points | You need to know how to use the library or what parameters functions accept |
-| [data_models.md](data_models.md) | Module state, implicit data structures, GPIO state transitions | You need to understand the data/state managed by the module |
-| [workflows.md](workflows.md) | Motor control flows, development workflows, import side effects | You need to understand execution order, build/test/release processes |
-| [dependencies.md](dependencies.md) | Runtime/dev dependencies, platform requirements, known issues | You need to know what the project depends on or what's needed to run it |
+| [architecture.md](architecture.md) | System design, class diagram, execution flow, design decisions | You need to understand how the system is structured or why decisions were made |
+| [components.md](components.md) | Class details, method table, half-step sequence, rotation math | You need specifics about what each method does or the step sequence |
+| [interfaces.md](interfaces.md) | Public API, constructor params, usage examples, error handling | You need to know how to use the library or what parameters methods accept |
+| [data_models.md](data_models.md) | Instance state, class variables, state transitions | You need to understand the data/state managed by the class |
+| [workflows.md](workflows.md) | Motor control flows, development workflows, context manager lifecycle | You need to understand execution order, build/test processes |
+| [dependencies.md](dependencies.md) | Runtime/dev dependencies, platform requirements, testing without hardware | You need to know what the project depends on or how to test off-Pi |
 
 ## Key Facts for Quick Reference
 
-- **Entry point:** `step_motor_28byj_48/step_motor_28byj_48.py`
-- **Public functions:** `left(step)`, `right(step)`, `test(move_right=512, move_left=512)`
-- **GPIO pins (BCM):** IN1=6, IN2=13, IN3=19, IN4=26
-- **Rotation:** 512 cycles = 360°, 256 = 180°, 128 = 90°
-- **Speed:** Controlled by `time = 0.001` (seconds between steps)
-- **Import warning:** Importing the module initializes GPIO — fails on non-Pi hardware
-- **Dependency gap:** RPi.GPIO is in requirements.txt but not in setup.py's install_requires
+- **Entry point:** `step_motor_28byj_48/motor.py` (class `StepMotor28BYJ48`)
+- **Public methods:** `rotate(degrees)`, `left(steps)`, `right(steps)`, `close()`
+- **Context manager:** `with StepMotor28BYJ48() as motor:`
+- **GPIO pins (BCM defaults):** IN1=6, IN2=13, IN3=19, IN4=26
+- **Rotation:** 512 cycles = 360 degrees, 256 = 180, 128 = 90
+- **Speed:** Controlled by `delay` parameter (default 0.001 seconds)
+- **Import note:** `motor.py` imports RPi.GPIO at top level; mock before importing for off-Pi testing
+- **Build system:** hatchling (pyproject.toml)
+- **Type safety:** mypy strict, PEP 561 compliant (py.typed marker)
 
 ## Cross-References
 
-- For **wiring instructions** → [codebase_info.md](codebase_info.md) (GPIO Pin Mapping)
-- For **how left/right differ** → [components.md](components.md) (Control Functions) or [workflows.md](workflows.md) (rotation flowcharts)
-- For **the step sequence pattern** → [components.md](components.md) (Half-Step Sequence Table) or [data_models.md](data_models.md) (Implicit Data)
-- For **why tests can't run locally** → [dependencies.md](dependencies.md) (Platform Requirements) + [architecture.md](architecture.md) (Constraints)
-- For **release process** → [workflows.md](workflows.md) (Release workflow)
+- For **wiring instructions** see [codebase_info.md](codebase_info.md) (GPIO Pin Mapping)
+- For **how left/right differ** see [components.md](components.md) (Direction Logic)
+- For **the step sequence pattern** see [components.md](components.md) (Half-Step Sequence Table)
+- For **how to test without a Pi** see [dependencies.md](dependencies.md) (Testing Without Hardware)
+- For **error types and conditions** see [interfaces.md](interfaces.md) (Error Handling)
+- For **development commands** see [workflows.md](workflows.md) (Development Workflows)

@@ -6,78 +6,93 @@
 
 ```mermaid
 graph LR
-    subgraph "step_motor_28byj_48.py"
-        direction TB
-        INIT[Module-Level Init]
-        STEPS[Step Functions<br/>Step1-Step8]
-        CTRL[Control Functions<br/>left, right, test]
+    subgraph "step_motor_28byj_48 package"
+        INIT["__init__.py<br/>(exports)"]
+        MOTOR["motor.py<br/>(StepMotor28BYJ48)"]
     end
-    INIT --> STEPS
-    STEPS --> CTRL
+    subgraph "tests package"
+        CONF["conftest.py<br/>(mock_gpio fixture)"]
+        TEST["test_motor.py<br/>(23 tests)"]
+    end
+    INIT --> MOTOR
+    TEST --> CONF
+    TEST --> MOTOR
 ```
 
-## Module: step_motor_28byj_48.py
+## Module: motor.py
 
-The sole implementation module. Contains all motor control logic.
+The sole implementation module. Contains the `StepMotor28BYJ48` class.
 
-### Module-Level Initialization
+### Class Variables
 
-Executes on import:
-1. Sets GPIO mode to BCM
-2. Defines pin constants (IN1=6, IN2=13, IN3=19, IN4=26)
-3. Sets speed delay (`time = 0.001` seconds)
-4. Configures all 4 pins as OUTPUT
-5. Sets all pins to LOW (False)
+| Name | Type | Value | Purpose |
+|------|------|-------|---------|
+| `_SEQUENCE` | `tuple[tuple[int, ...], ...]` | 8 half-step states | Defines coil activation pattern |
+| `STEPS_PER_REVOLUTION` | `int` | 512 | Full rotation step count |
 
-### Step Functions (Step1–Step8)
+### Instance Attributes
 
-Implement the half-step drive sequence. Each function:
-1. Sets one or two coil pins HIGH
-2. Sleeps for `time` seconds (0.001s)
-3. Sets those pins back to LOW
+| Name | Type | Set In | Purpose |
+|------|------|--------|---------|
+| `_pins` | `tuple[int, int, int, int]` | `__init__` | GPIO BCM pin numbers |
+| `_delay` | `float` | `__init__` | Seconds between steps |
+| `_closed` | `bool` | `__init__` | Lifecycle flag |
 
-**Half-Step Sequence Table:**
+### Methods
 
-| Function | IN1 (6) | IN2 (13) | IN3 (19) | IN4 (26) |
-|----------|---------|----------|----------|----------|
-| Step1 | - | - | - | HIGH |
-| Step2 | - | - | HIGH | HIGH |
-| Step3 | - | - | HIGH | - |
-| Step4 | - | HIGH | HIGH | - |
-| Step5 | - | HIGH | - | - |
-| Step6 | HIGH | HIGH | - | - |
-| Step7 | HIGH | - | - | - |
-| Step8 | HIGH | - | - | HIGH |
+| Method | Visibility | Purpose |
+|--------|-----------|---------|
+| `__init__` | Public | Configure pins, validate delay, initialize GPIO |
+| `__enter__` | Public | Context manager entry (returns self) |
+| `__exit__` | Public | Context manager exit (calls close) |
+| `_run_steps` | Private | Core step execution loop |
+| `left` | Public | Rotate counter-clockwise by step cycles |
+| `right` | Public | Rotate clockwise by step cycles |
+| `rotate` | Public | Rotate by degrees (positive=CW, negative=CCW) |
+| `close` | Public | Release GPIO resources (idempotent) |
 
-### Control Functions
+### Half-Step Sequence Table
 
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `left(step)` | `left(step: int)` | Rotates motor counter-clockwise. Calls Step1→Step8 in sequence, repeated `step` times. Prints progress. |
-| `right(step)` | `right(step: int)` | Rotates motor clockwise. Calls Step8→Step1 in sequence, repeated `step` times. Prints progress. |
-| `test(move_right=512, move_left=512)` | `test(move_right, move_left)` | Demo function: rotates 360° right, then 360° left, then calls `GPIO.cleanup()`. |
-
-### Key Constants
-
-| Name | Value | Purpose |
-|------|-------|---------|
-| `IN1` | 6 | GPIO BCM pin for ULN2003 IN1 |
-| `IN2` | 13 | GPIO BCM pin for ULN2003 IN2 |
-| `IN3` | 19 | GPIO BCM pin for ULN2003 IN3 |
-| `IN4` | 26 | GPIO BCM pin for ULN2003 IN4 |
-| `time` | 0.001 | Delay between steps in seconds |
+| Step | IN1 (pin1) | IN2 (pin2) | IN3 (pin3) | IN4 (pin4) |
+|------|-----------|-----------|-----------|-----------|
+| 0 | 0 | 0 | 0 | 1 |
+| 1 | 0 | 0 | 1 | 1 |
+| 2 | 0 | 0 | 1 | 0 |
+| 3 | 0 | 1 | 1 | 0 |
+| 4 | 0 | 1 | 0 | 0 |
+| 5 | 1 | 1 | 0 | 0 |
+| 6 | 1 | 0 | 0 | 0 |
+| 7 | 1 | 0 | 0 | 1 |
 
 ### Rotation Math
 
 - 8 half-steps = 1 step cycle
-- 512 step cycles = 360° rotation
-- 256 step cycles = 180°
-- 128 step cycles = 90°
+- 512 step cycles = 360 degrees
+- Conversion: `steps = round(abs(degrees) / 360 * 512)`
 
-## Package: tests/
+### Direction Logic
 
-Contains `TestStep_motor_28byj_48` — a placeholder unittest class with empty `setUp`, `tearDown`, and one empty test method (`test_000_something`).
+- **Counter-clockwise (left):** Sequence iterated forward (index 0 to 7)
+- **Clockwise (right):** Sequence iterated reversed (index 7 to 0)
+- **rotate(degrees):** Positive = clockwise, negative = counter-clockwise
 
-## Package: docs/
+## Module: __init__.py
 
-Sphinx documentation configuration. Uses `autodoc` and `viewcode` extensions with the `alabaster` theme.
+Exports `StepMotor28BYJ48` and `__version__`. No side effects.
+
+## Test Suite
+
+### conftest.py
+
+Provides `mock_gpio` autouse fixture that patches `sys.modules` with a `MagicMock` for `RPi` and `RPi.GPIO`, enabling tests to run on any platform.
+
+### test_motor.py
+
+4 test classes covering all functionality:
+
+| Class | Tests | Covers |
+|-------|-------|--------|
+| `TestInit` | 6 | GPIO setup, pin config, delay validation |
+| `TestRotation` | 7 | left/right sequence, step counts, validation |
+| `TestRotateDegrees` | 5 | Degree conversion, direction, zero handling |
+| `TestCleanup` | 5 | close(), context manager, use-after-close |

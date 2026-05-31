@@ -4,70 +4,94 @@
 
 ## Overview
 
-The project follows a flat, procedural architecture with no class hierarchy. A single module handles all motor control logic through module-level state and standalone functions.
+Single-class architecture encapsulating all motor state and control logic. No module-level side effects — GPIO is initialized only when a `StepMotor28BYJ48` instance is created.
 
 ## Architectural Pattern
 
-**Pattern:** Procedural scripting with module-level initialization
+**Pattern:** Object-oriented hardware driver with context manager protocol
 
-The module initializes GPIO hardware at import time (module-level side effects), then exposes functions for motor control. This is a common pattern for simple Raspberry Pi hardware drivers.
+The class encapsulates GPIO state, provides a clean lifecycle (init → use → close), and supports Python's `with` statement for automatic resource cleanup.
 
 ## System Architecture
 
 ```mermaid
 graph TB
     subgraph "Python Application"
-        A[User Script / __main__] --> B[left/right/test functions]
-        B --> C[Step1-Step8 functions]
+        A[User Code] --> B[StepMotor28BYJ48]
+        B --> C[_run_steps internal method]
+        C --> D[_SEQUENCE class variable]
     end
     subgraph "Hardware Abstraction"
-        C --> D[RPi.GPIO Library]
+        C --> E[RPi.GPIO Library]
     end
     subgraph "Physical Hardware"
-        D --> E[GPIO Pins 6, 13, 19, 26]
-        E --> F[ULN2003 Driver Board]
-        F --> G[28BYJ-48 Stepper Motor]
+        E --> F[GPIO Pins 6, 13, 19, 26]
+        F --> G[ULN2003 Driver Board]
+        G --> H[28BYJ-48 Stepper Motor]
     end
+```
+
+## Class Design
+
+```mermaid
+classDiagram
+    class StepMotor28BYJ48 {
+        +STEPS_PER_REVOLUTION: int = 512
+        -_SEQUENCE: tuple
+        -_pins: tuple
+        -_delay: float
+        -_closed: bool
+        +__init__(pin1, pin2, pin3, pin4, delay)
+        +__enter__() StepMotor28BYJ48
+        +__exit__(*args)
+        +rotate(degrees: float)
+        +left(steps: int)
+        +right(steps: int)
+        +close()
+        -_run_steps(steps, forward)
+    }
 ```
 
 ## Execution Flow
 
 ```mermaid
 sequenceDiagram
-    participant User as User/Script
-    participant Module as step_motor_28byj_48
+    participant User
+    participant Motor as StepMotor28BYJ48
     participant GPIO as RPi.GPIO
-    participant Motor as 28BYJ-48
 
-    Note over Module: Module import triggers GPIO init
-    Module->>GPIO: setmode(BCM)
-    Module->>GPIO: setup(IN1-IN4, OUT)
-    Module->>GPIO: output(IN1-IN4, False)
+    User->>Motor: __init__(pins, delay)
+    Motor->>GPIO: setmode(BCM)
+    Motor->>GPIO: setup(pins, OUT)
+    Motor->>GPIO: output(pins, LOW)
 
-    User->>Module: left(512) or right(512)
-    loop 512 cycles
-        loop 8 steps per cycle
-            Module->>GPIO: output(pins, True/False)
-            Module->>Module: sleep(0.001)
+    User->>Motor: rotate(90)
+    Motor->>Motor: Convert 90 degrees to 128 steps
+    loop 128 cycles
+        loop 8 sequence entries
+            Motor->>GPIO: output(pins, state)
+            Motor->>Motor: sleep(delay)
         end
     end
-    GPIO->>Motor: Electrical signals
-    Motor-->>User: Physical rotation
+
+    User->>Motor: close()
+    Motor->>GPIO: cleanup([pins])
 ```
 
 ## Design Decisions
 
 | Decision | Rationale |
 |----------|-----------|
-| Module-level GPIO init | Simple usage — import and call. No setup ceremony needed |
-| Half-step sequence | Smoother rotation and higher resolution than full-step |
-| Hardcoded pins | Single-purpose driver for a specific wiring configuration |
-| No class abstraction | Minimal complexity for a single-motor use case |
-| `time = 0.001` global | Simple speed control via module-level variable |
+| Class-based (not procedural) | Encapsulates state, supports multiple motors, enables context manager |
+| Data-driven step sequence | Single tuple table + loop replaces 8 separate functions |
+| Per-pin GPIO cleanup | `GPIO.cleanup([pins])` avoids interfering with other GPIO users |
+| `_closed` flag | Prevents use-after-close bugs with clear `RuntimeError` |
+| No print statements | Clean library behavior; users add their own logging |
+| Configurable pins | Supports non-default wiring and multiple motors |
 
 ## Constraints
 
-- **Single motor only:** Pin assignments are hardcoded; cannot drive multiple motors simultaneously
-- **Import side effects:** Importing the module immediately configures GPIO, which fails on non-Pi hardware
-- **No error handling:** No validation of step counts, no GPIO error recovery
-- **Blocking execution:** `left()` and `right()` block until all steps complete
+- **RPi.GPIO import at module level:** Importing `motor.py` requires RPi.GPIO to be available (or mocked)
+- **Blocking execution:** `left()`, `right()`, and `rotate()` block until all steps complete
+- **Single-threaded:** No thread safety; concurrent calls from multiple threads are unsafe
+- **No async support:** Blocking `sleep()` calls; not compatible with asyncio event loops

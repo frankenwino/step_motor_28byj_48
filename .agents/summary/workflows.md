@@ -4,99 +4,100 @@
 
 ## Motor Control Workflow
 
-### Left Rotation
+### Typical Usage Flow
 
 ```mermaid
 flowchart TD
-    A[left&#40;step&#41; called] --> B{i < step?}
-    B -->|Yes| C[Step1: IN4 HIGH → sleep → LOW]
-    C --> D[Step2: IN3,IN4 HIGH → sleep → LOW]
-    D --> E[Step3: IN3 HIGH → sleep → LOW]
-    E --> F[Step4: IN2,IN3 HIGH → sleep → LOW]
-    F --> G[Step5: IN2 HIGH → sleep → LOW]
-    G --> H[Step6: IN1,IN2 HIGH → sleep → LOW]
-    H --> I[Step7: IN1 HIGH → sleep → LOW]
-    I --> J[Step8: IN1,IN4 HIGH → sleep → LOW]
-    J --> K[Print progress]
-    K --> B
-    B -->|No| L[Return]
+    A[Create StepMotor28BYJ48] --> B[GPIO initialized]
+    B --> C{Use motor}
+    C --> D["rotate(degrees)"]
+    C --> E["left(steps) / right(steps)"]
+    D --> F[_run_steps converts and executes]
+    E --> F
+    F --> G{More operations?}
+    G -->|Yes| C
+    G -->|No| H["close()"]
+    H --> I[GPIO cleaned up]
 ```
 
-### Right Rotation
+### Rotation Execution
 
 ```mermaid
 flowchart TD
-    A[right&#40;step&#41; called] --> B{i < step?}
-    B -->|Yes| C[Step8: IN1,IN4 HIGH → sleep → LOW]
-    C --> D[Step7: IN1 HIGH → sleep → LOW]
-    D --> E[Step6: IN1,IN2 HIGH → sleep → LOW]
-    E --> F[Step5: IN2 HIGH → sleep → LOW]
-    F --> G[Step4: IN2,IN3 HIGH → sleep → LOW]
-    G --> H[Step3: IN3 HIGH → sleep → LOW]
-    H --> I[Step2: IN3,IN4 HIGH → sleep → LOW]
-    I --> J[Step1: IN4 HIGH → sleep → LOW]
-    J --> K[Print progress]
-    K --> B
-    B -->|No| L[Return]
+    A["_run_steps(steps, forward)"] --> B{_closed?}
+    B -->|Yes| C[raise RuntimeError]
+    B -->|No| D{steps > 0?}
+    D -->|No| E[raise ValueError]
+    D -->|Yes| F[Select sequence direction]
+    F --> G{forward?}
+    G -->|Yes| H[Use _SEQUENCE as-is]
+    G -->|No| I[Use _SEQUENCE reversed]
+    H --> J[Loop: steps x 8 states]
+    I --> J
+    J --> K[GPIO.output for each pin]
+    K --> L["sleep(delay)"]
+    L --> M{More states?}
+    M -->|Yes| K
+    M -->|No| N{More cycles?}
+    N -->|Yes| J
+    N -->|No| O[Return]
 ```
 
-### Test Workflow
-
-```mermaid
-flowchart TD
-    A[test&#40;&#41; called] --> B[right&#40;512&#41;<br/>360° clockwise]
-    B --> C[left&#40;512&#41;<br/>360° counter-clockwise]
-    C --> D[GPIO.cleanup&#40;&#41;]
-    D --> E[Return]
-```
-
-## Development Workflows
-
-### Build & Install
+### Degree-to-Steps Conversion
 
 ```mermaid
 flowchart LR
-    A[make install] --> B[make clean]
-    B --> C[python setup.py install]
+    A[degrees] --> B["steps = round(abs(degrees) / 360 x 512)"]
+    B --> C{degrees > 0?}
+    C -->|Yes| D["_run_steps(steps, forward=False) Clockwise"]
+    C -->|No| E["_run_steps(steps, forward=True) Counter-clockwise"]
 ```
+
+## Context Manager Lifecycle
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Motor as StepMotor28BYJ48
+    participant GPIO as RPi.GPIO
+
+    User->>Motor: with StepMotor28BYJ48() as motor
+    Motor->>GPIO: setmode, setup, output
+    Motor-->>User: motor instance
+
+    User->>Motor: motor.rotate(360)
+    Motor->>GPIO: output calls x 512 x 8
+
+    Note over User,Motor: Block exits (normal or exception)
+    Motor->>Motor: __exit__ calls close()
+    Motor->>GPIO: cleanup([6, 13, 19, 26])
+```
+
+## Development Workflows
 
 ### Testing
 
 ```mermaid
 flowchart LR
-    A[make test] --> B[python setup.py test]
-    C[make test-all] --> D[tox]
-    D --> E[py27, py35-38, flake8]
+    A[pytest] --> B[conftest.py patches RPi.GPIO]
+    B --> C[test_motor.py runs 23 tests]
+    C --> D[Coverage report at 98 percent]
 ```
 
-### Release
-
-```mermaid
-flowchart TD
-    A[bump2version patch/minor/major] --> B[git push]
-    B --> C[git push --tags]
-    C --> D[Travis CI runs tests]
-    D --> E[Deploy to PyPI via twine]
-```
-
-### Documentation
+### Quality Checks
 
 ```mermaid
 flowchart LR
-    A[make docs] --> B[sphinx-apidoc]
-    B --> C[make html]
-    C --> D[Open in browser]
+    A[make lint] --> B[ruff check]
+    C[make typecheck] --> D[mypy --strict]
+    E[make test] --> F[pytest]
+    G[make coverage] --> H[pytest --cov --cov-fail-under=90]
 ```
 
-## Module Import Side Effects
+### Build and Install
 
 ```mermaid
-flowchart TD
-    A[import step_motor_28byj_48] --> B[GPIO.setmode&#40;BCM&#41;]
-    B --> C[Define pin constants]
-    C --> D[GPIO.setup&#40;pins, OUT&#41;]
-    D --> E[GPIO.output&#40;pins, False&#41;]
-    E --> F[Module ready for use]
+flowchart LR
+    A["pip install -e .[dev]"] --> B[hatchling builds]
+    B --> C[Package + dev tools installed]
 ```
-
-**Important:** Importing this module on non-Raspberry Pi hardware will raise a `RuntimeError` from RPi.GPIO because the GPIO hardware is not available.
