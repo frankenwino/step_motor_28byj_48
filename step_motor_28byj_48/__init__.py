@@ -1,7 +1,6 @@
-# -*- coding: utf-8 -*-
+"""Driver for 28BYJ-48 stepper motor with ULN2003 driver board."""
 
-"""Top-level package for Step Motor 28BYJ-48."""
+from step_motor_28byj_48.motor import StepMotor28BYJ48
 
-__author__ = """Andrew Browne"""
-__email__ = 'andy.maildrop@gmail.com'
-__version__ = '0.1.0'
+__all__ = ["StepMotor28BYJ48"]
+__version__ = "1.0.0"

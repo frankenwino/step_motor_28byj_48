@@ -23,6 +23,7 @@ import sys
 sys.path.insert(0, os.path.abspath('..'))
 
 import step_motor_28byj_48
+from step_motor_28byj_48 import motor  # noqa: F401
 
 # -- General configuration ---------------------------------------------
 
@@ -48,7 +49,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'Step Motor 28BYJ-48'
-copyright = u"2019, Andrew Browne"
+copyright = u"2019-2026, Andrew Browne"
 author = u"Andrew Browne"
 
 # The version info for the project you're documenting, acts as replacement

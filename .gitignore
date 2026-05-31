@@ -1,3 +1,10 @@
+# Specs (local development docs)
+specs/
+
+# Tool caches
+.ruff_cache/
+.mypy_cache/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
